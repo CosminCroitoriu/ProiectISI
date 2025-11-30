@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RoadAlert - Map</title>
+    
+    <!-- ArcGIS Maps SDK CSS -->
+    <link rel="stylesheet" href="https://js.arcgis.com/4.28/esri/themes/light/main.css">
+    
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="map.css">
+</head>
+<body>
+    <!-- Header -->
+    <div class="header">
+        <div class="header-left">
+            <h1>RoadAlert</h1>
+        </div>
+        <div class="header-right">
+            <span id="username"></span>
+            <button id="logoutBtn">Logout</button>
+        </div>
+    </div>
+
+    <!-- Map Container -->
+    <div id="mapDiv"></div>
+
+    <!-- Loading Indicator -->
+    <div id="loading">
+        <div class="spinner"></div>
+        <p>Loading map...</p>
+    </div>
+
+    <!-- ArcGIS Maps SDK -->
+    <script src="https://js.arcgis.com/4.28/"></script>
+    
+    <!-- Map JavaScript -->
+    <script src="map.js"></script>
+</body>
+</html>
+
