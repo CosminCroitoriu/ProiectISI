@@ -10,6 +10,11 @@ if (!token) {
 // Display username
 document.getElementById('username').textContent = `Welcome, ${user.username || 'User'}!`;
 
+// Profile button functionality
+document.getElementById('profileBtn').addEventListener('click', () => {
+    window.location.href = 'profile.html';
+});
+
 // Logout functionality
 document.getElementById('logoutBtn').addEventListener('click', () => {
     localStorage.removeItem('token');

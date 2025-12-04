@@ -38,6 +38,24 @@ body {
     font-weight: bold;
 }
 
+#profileBtn {
+    padding: 8px 20px;
+    background: rgba(255, 255, 255, 0.95);
+    color: #667eea;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: bold;
+    transition: all 0.3s ease;
+}
+
+#profileBtn:hover {
+    background: white;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
 #logoutBtn {
     padding: 8px 20px;
     background: rgba(255, 255, 255, 0.2);
@@ -114,4 +132,5 @@ body {
         display: none;
     }
 }
+
 

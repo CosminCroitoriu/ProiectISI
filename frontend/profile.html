@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RoadAlert - Profile</title>
+    
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="profile.css">
+</head>
+<body>
+    <!-- Header -->
+    <div class="header">
+        <div class="header-left">
+            <h1>RoadAlert</h1>
+        </div>
+        <div class="header-right">
+            <button id="backToMapBtn" class="btn-secondary">Back to Map</button>
+            <button id="logoutBtn" class="btn-primary">Logout</button>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="container">
+        <div class="profile-card">
+            <div class="profile-header">
+                <div class="avatar">
+                    <span id="avatarInitial"></span>
+                </div>
+                <h2 id="profileUsername"></h2>
+            </div>
+
+            <!-- Loading Indicator -->
+            <div id="loading" class="loading">
+                <div class="spinner"></div>
+                <p>Loading profile...</p>
+            </div>
+
+            <!-- Error Message -->
+            <div id="errorMessage" class="error-message" style="display: none;"></div>
+
+            <!-- Profile Details -->
+            <div id="profileDetails" class="profile-details" style="display: none;">
+                <div class="detail-group">
+                    <label>User ID</label>
+                    <div class="detail-value" id="userId"></div>
+                </div>
+
+                <div class="detail-group">
+                    <label>Username</label>
+                    <div class="detail-value" id="username"></div>
+                </div>
+
+                <div class="detail-group">
+                    <label>Email</label>
+                    <div class="detail-value" id="email"></div>
+                </div>
+
+                <div class="detail-group">
+                    <label>Reputation Score</label>
+                    <div class="detail-value reputation" id="reputationScore"></div>
+                </div>
+
+                <div class="detail-group">
+                    <label>Member Since</label>
+                    <div class="detail-value" id="createdAt"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Profile JavaScript -->
+    <script src="profile.js"></script>
+</body>
+</html>
+
