@@ -27,6 +27,47 @@
     <!-- Map Container -->
     <div id="mapDiv"></div>
 
+    <!-- Custom Recenter Button -->
+    <div id="recenterBtn" class="custom-map-btn" title="Recenter to my location">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M12 2v4"></path>
+            <path d="M12 18v4"></path>
+            <path d="M2 12h4"></path>
+            <path d="M18 12h4"></path>
+        </svg>
+    </div>
+
+    <!-- Directions Panel -->
+    <div id="directionsPanel">
+        <div class="directions-header">
+            <h3>🧭 Get Directions</h3>
+            <button id="closeDirections" class="close-btn">&times;</button>
+        </div>
+        <div class="directions-content">
+            <div class="input-group">
+                <label>From:</label>
+                <input type="text" id="startInput" placeholder="Enter start location or use current">
+                <button id="useCurrentLocation" class="use-location-btn" title="Use my location">📍</button>
+            </div>
+            <div class="input-group">
+                <label>To:</label>
+                <input type="text" id="endInput" placeholder="Enter destination">
+            </div>
+            <button id="getDirectionsBtn" class="directions-btn">Get Route</button>
+            <button id="clearRouteBtn" class="clear-btn">Clear Route</button>
+        </div>
+        <div id="directionsResults"></div>
+    </div>
+
+    <!-- Toggle Directions Button -->
+    <div id="toggleDirectionsBtn" class="custom-map-btn directions-toggle" title="Get Directions">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 11l18-5v12L3 14v-3z"></path>
+            <path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"></path>
+        </svg>
+    </div>
+
     <!-- Loading Indicator -->
     <div id="loading">
         <div class="spinner"></div>

@@ -17,18 +17,6 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-### 2. Setup PostgreSQL Database
-
-```bash
-# Start PostgreSQL
-brew services start postgresql@14  # macOS
-# or
-sudo service postgresql start      # Linux
-
-# Run database setup
-psql -U postgres -f database.sql
-```
-
 ### 3. Configure Environment
 
 ```bash
