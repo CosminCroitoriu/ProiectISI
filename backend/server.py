@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={r"/api/*": {"origins": "*", "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"], "allow_headers": ["Content-Type", "Authorization"]}})
 
 # Configuration
 DB_CONFIG = {
@@ -232,6 +232,229 @@ def login():
         
     except Exception as e:
         print(f"Login error: {e}")
+        return jsonify({
+            'success': False,
+            'message': 'Internal server error'
+        }), 500
+
+# Helper function to verify JWT token
+def verify_token():
+    """Verify JWT token from Authorization header"""
+    auth_header = request.headers.get('Authorization')
+    if not auth_header:
+        return None, "Access token required"
+    
+    token = auth_header.split(' ')[1] if ' ' in auth_header else auth_header
+    
+    try:
+        decoded = jwt.decode(token, JWT_SECRET, algorithms=['HS256'])
+        return decoded['userId'], None
+    except jwt.ExpiredSignatureError:
+        return None, "Token expired"
+    except jwt.InvalidTokenError:
+        return None, "Invalid token"
+
+# ==================== REPORTS ENDPOINTS ====================
+
+@app.route('/api/reports', methods=['POST'])
+def create_report():
+    """Create a new map report (police or accident)"""
+    try:
+        user_id, error = verify_token()
+        if error:
+            return jsonify({'success': False, 'message': error}), 401
+        
+        data = request.get_json()
+        
+        # Validation
+        latitude = data.get('latitude')
+        longitude = data.get('longitude')
+        report_type = data.get('type')  # 'POLICE' or 'ACCIDENT'
+        description = data.get('description', '')
+        
+        if latitude is None or longitude is None:
+            return jsonify({
+                'success': False,
+                'message': 'Latitude and longitude are required'
+            }), 400
+        
+        if not report_type or report_type not in ['POLICE', 'ACCIDENT']:
+            return jsonify({
+                'success': False,
+                'message': 'Type must be POLICE or ACCIDENT'
+            }), 400
+        
+        conn = get_db()
+        if not conn:
+            return jsonify({
+                'success': False,
+                'message': 'Database connection failed'
+            }), 500
+        
+        cursor = conn.cursor()
+        
+        # Get the type_id from incident_types
+        cursor.execute('SELECT id FROM incident_types WHERE type_name = %s', (report_type,))
+        type_row = cursor.fetchone()
+        
+        if not type_row:
+            cursor.close()
+            conn.close()
+            return jsonify({
+                'success': False,
+                'message': 'Invalid report type'
+            }), 400
+        
+        type_id = type_row['id']
+        
+        # Create the report
+        cursor.execute(
+            '''INSERT INTO reports (user_id, type_id, latitude, longitude, description, status) 
+               VALUES (%s, %s, %s, %s, %s, 'ACTIVE') 
+               RETURNING id, user_id, type_id, latitude, longitude, description, status, created_at''',
+            (user_id, type_id, latitude, longitude, description)
+        )
+        report = cursor.fetchone()
+        conn.commit()
+        
+        # Get the username for the response
+        cursor.execute('SELECT username FROM users WHERE id = %s', (user_id,))
+        user = cursor.fetchone()
+        
+        cursor.close()
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'report': {
+                'id': report['id'],
+                'user_id': report['user_id'],
+                'username': user['username'] if user else 'Unknown',
+                'type_name': report_type,
+                'latitude': float(report['latitude']),
+                'longitude': float(report['longitude']),
+                'description': report['description'],
+                'status': report['status'],
+                'created_at': report['created_at'].isoformat() if report['created_at'] else None
+            },
+            'message': 'Report created successfully'
+        }), 201
+        
+    except Exception as e:
+        print(f"Create report error: {e}")
+        return jsonify({
+            'success': False,
+            'message': 'Internal server error'
+        }), 500
+
+@app.route('/api/reports', methods=['GET'])
+def get_reports():
+    """Get all active reports for the map"""
+    try:
+        user_id, error = verify_token()
+        if error:
+            return jsonify({'success': False, 'message': error}), 401
+        
+        conn = get_db()
+        if not conn:
+            return jsonify({
+                'success': False,
+                'message': 'Database connection failed'
+            }), 500
+        
+        cursor = conn.cursor()
+        
+        # Get all active reports with type names and usernames
+        cursor.execute('''
+            SELECT r.id, r.user_id, u.username, it.type_name, 
+                   r.latitude, r.longitude, r.description, r.status, r.created_at
+            FROM reports r
+            JOIN incident_types it ON r.type_id = it.id
+            JOIN users u ON r.user_id = u.id
+            WHERE r.status = 'ACTIVE'
+            ORDER BY r.created_at DESC
+        ''')
+        reports = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        
+        # Convert to list of dicts with proper types
+        reports_list = []
+        for report in reports:
+            reports_list.append({
+                'id': report['id'],
+                'user_id': report['user_id'],
+                'username': report['username'],
+                'type_name': report['type_name'],
+                'latitude': float(report['latitude']),
+                'longitude': float(report['longitude']),
+                'description': report['description'],
+                'status': report['status'],
+                'created_at': report['created_at'].isoformat() if report['created_at'] else None
+            })
+        
+        return jsonify({
+            'success': True,
+            'reports': reports_list
+        })
+        
+    except Exception as e:
+        print(f"Get reports error: {e}")
+        return jsonify({
+            'success': False,
+            'message': 'Internal server error'
+        }), 500
+
+@app.route('/api/reports/<int:report_id>', methods=['DELETE'])
+def delete_report(report_id):
+    """Delete a report (only by the user who created it)"""
+    try:
+        user_id, error = verify_token()
+        if error:
+            return jsonify({'success': False, 'message': error}), 401
+        
+        conn = get_db()
+        if not conn:
+            return jsonify({
+                'success': False,
+                'message': 'Database connection failed'
+            }), 500
+        
+        cursor = conn.cursor()
+        
+        # Check if report exists and belongs to user
+        cursor.execute('SELECT user_id FROM reports WHERE id = %s', (report_id,))
+        report = cursor.fetchone()
+        
+        if not report:
+            cursor.close()
+            conn.close()
+            return jsonify({
+                'success': False,
+                'message': 'Report not found'
+            }), 404
+        
+        if report['user_id'] != user_id:
+            cursor.close()
+            conn.close()
+            return jsonify({
+                'success': False,
+                'message': 'You can only delete your own reports'
+            }), 403
+        
+        # Delete the report
+        cursor.execute('DELETE FROM reports WHERE id = %s', (report_id,))
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Report deleted successfully'
+        })
+        
+    except Exception as e:
+        print(f"Delete report error: {e}")
         return jsonify({
             'success': False,
             'message': 'Internal server error'

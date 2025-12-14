@@ -17,26 +17,9 @@ Open-source alternative to Waze for reporting and monitoring traffic incidents.
 ### Prerequisites
 
 - [Python 3.8+](https://www.python.org/)
-- [PostgreSQL](https://www.postgresql.org/) (v14 or higher)
+- Azure PostgreSQL Database (configured in backend)
 
-### Step 1: Setup Database
-
-```bash
-# Start PostgreSQL (macOS)
-brew install postgresql@14
-brew services start postgresql@14
-
-# Or on Linux
-sudo service postgresql start
-
-# Access PostgreSQL
-psql -U postgres
-
-# Inside psql, run:
-\i backend/database.sql
-```
-
-### Step 2: Setup Backend
+### Step 1: Setup Backend
 
 ```bash
 cd backend
@@ -44,13 +27,10 @@ cd backend
 # Install dependencies
 pip3 install -r requirements.txt
 
-# Create .env file
+# Create .env file with Azure database connection
+# Get the connection string from Azure Portal
 echo "PORT=5000
-DB_HOST=localhost
-DB_PORT=5432
-DB_NAME=roadalert
-DB_USER=postgres
-DB_PASSWORD=postgres
+AZURE_DB_CONNECTION_STRING=your_azure_postgresql_connection_string
 JWT_SECRET=roadalert_super_secret_key" > .env
 
 # Start server
@@ -59,7 +39,7 @@ python3 server.py
 
 Server will be running at: **http://localhost:5000**
 
-### Step 3: Setup Frontend
+### Step 2: Setup Frontend
 
 ```bash
 cd frontend
@@ -102,7 +82,7 @@ GET  /api/health           # Health check
 
 **Backend:**
 - Python + Flask
-- PostgreSQL
+- Azure PostgreSQL
 - JWT authentication
 - bcrypt password hashing
 
