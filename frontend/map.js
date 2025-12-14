@@ -42,8 +42,9 @@ require([
     "esri/rest/locator",
     "esri/geometry/Point",
     "esri/symbols/SimpleMarkerSymbol",
-    "esri/symbols/SimpleLineSymbol"
-], function(esriConfig, Map, MapView, GraphicsLayer, Graphic, Locate, BasemapGallery, Expand, Search, route, RouteParameters, FeatureSet, locator, Point, SimpleMarkerSymbol, SimpleLineSymbol) {
+    "esri/symbols/SimpleLineSymbol",
+    "esri/core/reactiveUtils"
+], function(esriConfig, Map, MapView, GraphicsLayer, Graphic, Locate, BasemapGallery, Expand, Search, route, RouteParameters, FeatureSet, locator, Point, SimpleMarkerSymbol, SimpleLineSymbol, reactiveUtils) {
     
     // ArcGIS API Key - Set your key here for routing functionality
     // Get your free key at: https://developers.arcgis.com/
@@ -749,7 +750,12 @@ require([
         const graphic = new Graphic({
             geometry: point,
             symbol: markerSymbol,
-            attributes: incident,
+            attributes: {
+                ...incident,
+                reportId: incident.id,
+                popupIcon: popupIcon,
+                timeAgo: timeAgo
+            },
             popupTemplate: {
                 title: `${popupIcon} ${incident.type_name || "Incident"}`,
                 content: `
@@ -757,11 +763,27 @@ require([
                         <p><strong>Reported by:</strong> ${incident.username || 'Anonymous'}</p>
                         <p><strong>Time:</strong> ${timeAgo}</p>
                         ${incident.description ? `<p><strong>Description:</strong> ${incident.description}</p>` : ''}
+                        <hr style="margin: 12px 0; border: none; border-top: 1px solid #e0e0e0;">
+                        <p style="font-weight: 600; color: #333;">Is this still here?</p>
                     </div>
-                `
+                `,
+                actions: [
+                    {
+                        id: "remove-report",
+                        title: "No, remove it",
+                        className: "esri-icon-trash"
+                    },
+                    {
+                        id: "keep-report", 
+                        title: "Yes, still here",
+                        className: "esri-icon-check-mark"
+                    }
+                ]
             }
         });
         
+        // Store reference to graphic for deletion
+        graphic.reportId = incident.id;
         incidentsLayer.add(graphic);
     }
     
@@ -844,6 +866,58 @@ require([
     view.when(() => {
         document.getElementById('loading').classList.add('hidden');
         console.log("Map loaded successfully");
+        
+        // Handle popup action clicks for delete functionality
+        reactiveUtils.on(
+            () => view.popup,
+            "trigger-action",
+            async (event) => {
+                const action = event.action;
+                const attributes = view.popup.selectedFeature?.attributes;
+                
+                if (!attributes) return;
+                
+                if (action.id === "remove-report") {
+                    const reportId = attributes.reportId || attributes.id;
+                    
+                    try {
+                        const response = await fetch(`http://localhost:5000/api/reports/${reportId}`, {
+                            method: 'DELETE',
+                            headers: {
+                                'Authorization': `Bearer ${token}`
+                            }
+                        });
+                        
+                        const data = await response.json();
+                        
+                        if (data.success) {
+                            // Remove the graphic from the map
+                            const graphicToRemove = incidentsLayer.graphics.find(g => g.reportId === reportId);
+                            if (graphicToRemove) {
+                                incidentsLayer.remove(graphicToRemove);
+                            }
+                            
+                            // Remove from known IDs so it doesn't get re-added
+                            knownReportIds.delete(reportId);
+                            
+                            // Close popup
+                            view.closePopup();
+                            
+                            // Show success toast
+                            showToast('Report removed successfully!', 'success');
+                        } else {
+                            showToast(data.message || 'Failed to remove report', 'error');
+                        }
+                    } catch (error) {
+                        console.error('Error deleting report:', error);
+                        showToast('Failed to remove report. Please try again.', 'error');
+                    }
+                } else if (action.id === "keep-report") {
+                    view.closePopup();
+                    showToast('Thanks for confirming!', 'success');
+                }
+            }
+        );
         
         // Load incidents from backend and start real-time polling
         loadIncidentsAndStartPolling();
