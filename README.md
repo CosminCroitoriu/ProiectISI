@@ -107,3 +107,7 @@ See `Documentatie_Initiala.md` for full project specifications.
 
 Open Source - Educational Project
 
+TODO:
+- ttl pe report-uri
+- sistem de votare pe report-uri, la 3 voturi sa se stearga report-ul
+- statistici, grafice (e.g. nr de accidente pe o anumita zona, strada, etc)
