@@ -41,10 +41,12 @@ require([
     "esri/rest/support/FeatureSet",
     "esri/rest/locator",
     "esri/geometry/Point",
+    "esri/geometry/Circle",
     "esri/symbols/SimpleMarkerSymbol",
     "esri/symbols/SimpleLineSymbol",
+    "esri/symbols/SimpleFillSymbol",
     "esri/core/reactiveUtils"
-], function(esriConfig, Map, MapView, GraphicsLayer, Graphic, Locate, BasemapGallery, Expand, Search, route, RouteParameters, FeatureSet, locator, Point, SimpleMarkerSymbol, SimpleLineSymbol, reactiveUtils) {
+], function(esriConfig, Map, MapView, GraphicsLayer, Graphic, Locate, BasemapGallery, Expand, Search, route, RouteParameters, FeatureSet, locator, Point, Circle, SimpleMarkerSymbol, SimpleLineSymbol, SimpleFillSymbol, reactiveUtils) {
     
     // ArcGIS API Key - Set your key here for routing functionality
     // Get your free key at: https://developers.arcgis.com/
@@ -518,6 +520,34 @@ require([
         });
         stopsLayer.add(endGraphic);
         
+        // Create polygon barriers from active reports (police, accidents)
+        // This ensures routes avoid areas with reported incidents
+        const barrierGraphics = [];
+        const BARRIER_RADIUS_METERS = 50; // 50 meter radius around each incident
+        
+        incidentsLayer.graphics.forEach(incidentGraphic => {
+            if (incidentGraphic.geometry && incidentGraphic.attributes) {
+                // Create a circular barrier around each incident
+                const incidentCircle = new Circle({
+                    center: incidentGraphic.geometry,
+                    radius: BARRIER_RADIUS_METERS,
+                    radiusUnit: "meters",
+                    geodesic: true
+                });
+                
+                const barrierGraphic = new Graphic({
+                    geometry: incidentCircle,
+                    attributes: {
+                        Name: `${incidentGraphic.attributes.type_name || 'Incident'} Barrier`,
+                        BarrierType: 0 // 0 = restriction (blocks travel)
+                    }
+                });
+                barrierGraphics.push(barrierGraphic);
+            }
+        });
+        
+        console.log(`Adding ${barrierGraphics.length} incident barriers to route calculation`);
+        
         // Set up route parameters using FeatureSet (as per ArcGIS tutorial)
         const routeParams = new RouteParameters({
             stops: new FeatureSet({
@@ -527,6 +557,13 @@ require([
             directionsLanguage: "en",
             directionsLengthUnits: "kilometers"
         });
+        
+        // Add polygon barriers if there are any incidents to avoid
+        if (barrierGraphics.length > 0) {
+            routeParams.polygonBarriers = new FeatureSet({
+                features: barrierGraphics
+            });
+        }
         
         try {
             // Solve route using the route service
