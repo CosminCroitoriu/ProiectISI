@@ -33,15 +33,29 @@ CREATE TABLE reports (
     longitude DECIMAL(11, 8) NOT NULL,
     description TEXT,
     status VARCHAR(20) DEFAULT 'ACTIVE',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    expires_at TIMESTAMP  -- TTL: reports expire after this time unless extended
 );
 
--- Create votes table
+-- Migration: Add expires_at column if table already exists
+-- ALTER TABLE reports ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP;
+
+-- Create votes table (legacy - for general votes)
 CREATE TABLE votes (
     id SERIAL PRIMARY KEY,
     report_id INTEGER REFERENCES reports(id) ON DELETE CASCADE,
     user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
     vote_type VARCHAR(10) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(report_id, user_id)
+);
+
+-- Create report_votes table (for keep/remove voting system)
+CREATE TABLE report_votes (
+    id SERIAL PRIMARY KEY,
+    report_id INTEGER REFERENCES reports(id) ON DELETE CASCADE,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    vote_type VARCHAR(10) NOT NULL CHECK (vote_type IN ('keep', 'remove')),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(report_id, user_id)
 );
@@ -53,6 +67,7 @@ CREATE INDEX idx_reports_status ON reports(status);
 CREATE INDEX idx_reports_created_at ON reports(created_at);
 CREATE INDEX idx_reports_location ON reports(latitude, longitude);
 CREATE INDEX idx_votes_report_id ON votes(report_id);
+CREATE INDEX idx_report_votes_report_id ON report_votes(report_id);
 
 -- Insert default incident types
 INSERT INTO incident_types (type_name, icon_url) VALUES

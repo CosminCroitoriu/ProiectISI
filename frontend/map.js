@@ -747,6 +747,17 @@ require([
             }
         }
         
+        // Vote counts
+        const keepVotes = incident.keep_votes || 0;
+        const removeVotes = incident.remove_votes || 0;
+        const userVote = incident.user_vote;
+        
+        // Build vote status text
+        let voteStatusHtml = '';
+        if (userVote) {
+            voteStatusHtml = `<p style="color: #666; font-style: italic;">You voted: ${userVote === 'keep' ? '✅ Still here' : '❌ Remove'}</p>`;
+        }
+        
         const graphic = new Graphic({
             geometry: point,
             symbol: markerSymbol,
@@ -754,7 +765,9 @@ require([
                 ...incident,
                 reportId: incident.id,
                 popupIcon: popupIcon,
-                timeAgo: timeAgo
+                timeAgo: timeAgo,
+                keepVotes: keepVotes,
+                removeVotes: removeVotes
             },
             popupTemplate: {
                 title: `${popupIcon} ${incident.type_name || "Incident"}`,
@@ -765,17 +778,22 @@ require([
                         ${incident.description ? `<p><strong>Description:</strong> ${incident.description}</p>` : ''}
                         <hr style="margin: 12px 0; border: none; border-top: 1px solid #e0e0e0;">
                         <p style="font-weight: 600; color: #333;">Is this still here?</p>
+                        <div style="display: flex; gap: 16px; margin-top: 8px;">
+                            <span style="color: #4caf50;">✅ ${keepVotes}/3</span>
+                            <span style="color: #f44336;">❌ ${removeVotes}/3</span>
+                        </div>
+                        ${voteStatusHtml}
                     </div>
                 `,
                 actions: [
                     {
                         id: "remove-report",
-                        title: "No, remove it",
+                        title: `No, remove (${removeVotes}/3)`,
                         className: "esri-icon-trash"
                     },
                     {
                         id: "keep-report", 
-                        title: "Yes, still here",
+                        title: `Yes, still here (${keepVotes}/3)`,
                         className: "esri-icon-check-mark"
                     }
                 ]
@@ -805,6 +823,22 @@ require([
             
             const data = await response.json();
             
+            // Get the set of active report IDs from the server
+            const activeReportIds = new Set(data.reports?.map(r => r.id) || []);
+            
+            // Remove expired reports from the map (reports we have locally but not on server)
+            knownReportIds.forEach(reportId => {
+                if (!activeReportIds.has(reportId)) {
+                    console.log('Report expired or removed:', reportId);
+                    const graphicToRemove = incidentsLayer.graphics.find(g => g.reportId === reportId);
+                    if (graphicToRemove) {
+                        incidentsLayer.remove(graphicToRemove);
+                    }
+                    knownReportIds.delete(reportId);
+                }
+            });
+            
+            // Add new reports
             if (data.reports && data.reports.length > 0) {
                 data.reports.forEach(report => {
                     // Only add new reports that we haven't seen
@@ -867,7 +901,43 @@ require([
         document.getElementById('loading').classList.add('hidden');
         console.log("Map loaded successfully");
         
-        // Handle popup action clicks for delete functionality
+        // Function to refresh all reports from server
+        async function refreshReports() {
+            try {
+                const response = await fetch('http://localhost:5000/api/reports', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await response.json();
+                
+                if (data.success && data.reports) {
+                    const currentReportIds = new Set(data.reports.map(r => r.id));
+                    
+                    // Remove reports no longer in the list
+                    incidentsLayer.graphics.toArray().forEach(graphic => {
+                        const gId = graphic.attributes?.id;
+                        if (gId && !currentReportIds.has(gId)) {
+                            incidentsLayer.remove(graphic);
+                            knownReportIds.delete(gId);
+                        }
+                    });
+                    
+                    // Update or add reports
+                    data.reports.forEach(report => {
+                        const existingGraphic = incidentsLayer.graphics.find(g => g.attributes?.id === report.id);
+                        if (existingGraphic) {
+                            // Remove and re-add to update popup content
+                            incidentsLayer.remove(existingGraphic);
+                        }
+                        addIncidentToMap(report);
+                        knownReportIds.add(report.id);
+                    });
+                }
+            } catch (error) {
+                console.error('Error refreshing reports:', error);
+            }
+        }
+        
+        // Handle popup action clicks for voting functionality
         reactiveUtils.on(
             () => view.popup,
             "trigger-action",
@@ -877,44 +947,69 @@ require([
                 
                 if (!attributes) return;
                 
+                const reportId = attributes.reportId || attributes.id;
+                let voteType = null;
+                
                 if (action.id === "remove-report") {
-                    const reportId = attributes.reportId || attributes.id;
+                    voteType = 'remove';
+                } else if (action.id === "keep-report") {
+                    voteType = 'keep';
+                }
+                
+                if (!voteType) return;
+                
+                try {
+                    const response = await fetch(`http://localhost:5000/api/reports/${reportId}/vote`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify({ vote: voteType })
+                    });
                     
-                    try {
-                        const response = await fetch(`http://localhost:5000/api/reports/${reportId}`, {
-                            method: 'DELETE',
-                            headers: {
-                                'Authorization': `Bearer ${token}`
-                            }
-                        });
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        const keepVotes = data.keep_votes ?? 0;
+                        const removeVotes = data.remove_votes ?? 0;
                         
-                        const data = await response.json();
-                        
-                        if (data.success) {
+                        // Check if action was taken
+                        if (data.action_taken === 'removed') {
                             // Remove the graphic from the map
                             const graphicToRemove = incidentsLayer.graphics.find(g => g.reportId === reportId);
                             if (graphicToRemove) {
                                 incidentsLayer.remove(graphicToRemove);
                             }
-                            
-                            // Remove from known IDs so it doesn't get re-added
                             knownReportIds.delete(reportId);
-                            
-                            // Close popup
                             view.closePopup();
-                            
-                            // Show success toast
-                            showToast('Report removed successfully!', 'success');
+                            showToast('🗑️ Report removed! (3 votes reached)', 'success');
+                        } else if (data.action_taken === 'extended') {
+                            view.closePopup();
+                            showToast('✅ Report confirmed! TTL extended, votes reset.', 'success');
+                            // Refresh to update the graphic
+                            refreshReports();
                         } else {
-                            showToast(data.message || 'Failed to remove report', 'error');
+                            // Vote recorded but threshold not reached
+                            view.closePopup();
+                            const voteEmoji = voteType === 'keep' ? '✅' : '❌';
+                            showToast(`${voteEmoji} Vote recorded! (${keepVotes}/3 keep, ${removeVotes}/3 remove)`, 'success');
+                            // Refresh to update the graphic with new vote counts
+                            refreshReports();
                         }
-                    } catch (error) {
-                        console.error('Error deleting report:', error);
-                        showToast('Failed to remove report. Please try again.', 'error');
+                    } else {
+                        const keepVotes = data.keep_votes ?? 0;
+                        const removeVotes = data.remove_votes ?? 0;
+                        
+                        if (data.already_voted) {
+                            showToast(`You already voted this way (${keepVotes}/3 keep, ${removeVotes}/3 remove)`, 'error');
+                        } else {
+                            showToast(data.message || 'Failed to vote', 'error');
+                        }
                     }
-                } else if (action.id === "keep-report") {
-                    view.closePopup();
-                    showToast('Thanks for confirming!', 'success');
+                } catch (error) {
+                    console.error('Error voting on report:', error);
+                    showToast('Failed to vote. Please try again.', 'error');
                 }
             }
         );

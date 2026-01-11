@@ -256,6 +256,12 @@ def verify_token():
 
 # ==================== REPORTS ENDPOINTS ====================
 
+# TTL for reports in seconds (10 seconds for testing, change to e.g. 3600 for 1 hour in production)
+REPORT_TTL_SECONDS = 30
+
+# Number of votes needed to remove or extend a report
+VOTES_THRESHOLD = 3
+
 @app.route('/api/reports', methods=['POST'])
 def create_report():
     """Create a new map report (police or accident)"""
@@ -307,12 +313,15 @@ def create_report():
         
         type_id = type_row['id']
         
-        # Create the report
+        # Calculate expires_at
+        expires_at = datetime.utcnow() + timedelta(seconds=REPORT_TTL_SECONDS)
+        
+        # Create the report with expires_at
         cursor.execute(
-            '''INSERT INTO reports (user_id, type_id, latitude, longitude, description, status) 
-               VALUES (%s, %s, %s, %s, %s, 'ACTIVE') 
-               RETURNING id, user_id, type_id, latitude, longitude, description, status, created_at''',
-            (user_id, type_id, latitude, longitude, description)
+            '''INSERT INTO reports (user_id, type_id, latitude, longitude, description, status, expires_at) 
+               VALUES (%s, %s, %s, %s, %s, 'ACTIVE', %s) 
+               RETURNING id, user_id, type_id, latitude, longitude, description, status, created_at, expires_at''',
+            (user_id, type_id, latitude, longitude, description, expires_at)
         )
         report = cursor.fetchone()
         conn.commit()
@@ -335,7 +344,8 @@ def create_report():
                 'longitude': float(report['longitude']),
                 'description': report['description'],
                 'status': report['status'],
-                'created_at': report['created_at'].isoformat() if report['created_at'] else None
+                'created_at': report['created_at'].isoformat() if report['created_at'] else None,
+                'expires_at': report['expires_at'].isoformat() if report['expires_at'] else None
             },
             'message': 'Report created successfully'
         }), 201
@@ -349,7 +359,7 @@ def create_report():
 
 @app.route('/api/reports', methods=['GET'])
 def get_reports():
-    """Get all active reports for the map"""
+    """Get all active (non-expired) reports for the map"""
     try:
         user_id, error = verify_token()
         if error:
@@ -364,17 +374,37 @@ def get_reports():
         
         cursor = conn.cursor()
         
-        # Get all active reports with type names and usernames
+        # Get all active reports that haven't expired with vote counts
         cursor.execute('''
             SELECT r.id, r.user_id, u.username, it.type_name, 
-                   r.latitude, r.longitude, r.description, r.status, r.created_at
+                   r.latitude, r.longitude, r.description, r.status, r.created_at, r.expires_at,
+                   COALESCE(keep_votes.count, 0) as keep_votes,
+                   COALESCE(remove_votes.count, 0) as remove_votes
             FROM reports r
             JOIN incident_types it ON r.type_id = it.id
             JOIN users u ON r.user_id = u.id
-            WHERE r.status = 'ACTIVE'
+            LEFT JOIN (
+                SELECT report_id, COUNT(*) as count 
+                FROM report_votes WHERE vote_type = 'keep' 
+                GROUP BY report_id
+            ) keep_votes ON r.id = keep_votes.report_id
+            LEFT JOIN (
+                SELECT report_id, COUNT(*) as count 
+                FROM report_votes WHERE vote_type = 'remove' 
+                GROUP BY report_id
+            ) remove_votes ON r.id = remove_votes.report_id
+            WHERE r.status = 'ACTIVE' 
+              AND (r.expires_at IS NULL OR r.expires_at > NOW())
             ORDER BY r.created_at DESC
         ''')
         reports = cursor.fetchall()
+        
+        # Check which reports the current user has voted on
+        cursor.execute('''
+            SELECT report_id, vote_type FROM report_votes WHERE user_id = %s
+        ''', (user_id,))
+        user_votes = {row['report_id']: row['vote_type'] for row in cursor.fetchall()}
+        
         cursor.close()
         conn.close()
         
@@ -390,12 +420,17 @@ def get_reports():
                 'longitude': float(report['longitude']),
                 'description': report['description'],
                 'status': report['status'],
-                'created_at': report['created_at'].isoformat() if report['created_at'] else None
+                'created_at': report['created_at'].isoformat() if report['created_at'] else None,
+                'expires_at': report['expires_at'].isoformat() if report['expires_at'] else None,
+                'keep_votes': report['keep_votes'],
+                'remove_votes': report['remove_votes'],
+                'user_vote': user_votes.get(report['id'])  # 'keep', 'remove', or None
             })
         
         return jsonify({
             'success': True,
-            'reports': reports_list
+            'reports': reports_list,
+            'votes_threshold': VOTES_THRESHOLD
         })
         
     except Exception as e:
@@ -405,13 +440,22 @@ def get_reports():
             'message': 'Internal server error'
         }), 500
 
-@app.route('/api/reports/<int:report_id>', methods=['DELETE'])
-def delete_report(report_id):
-    """Delete a report (only by the user who created it)"""
+@app.route('/api/reports/<int:report_id>/vote', methods=['POST'])
+def vote_on_report(report_id):
+    """Vote to keep or remove a report. 3 votes needed for action."""
     try:
         user_id, error = verify_token()
         if error:
             return jsonify({'success': False, 'message': error}), 401
+        
+        data = request.get_json()
+        vote_type = data.get('vote')  # 'keep' or 'remove'
+        
+        if vote_type not in ['keep', 'remove']:
+            return jsonify({
+                'success': False,
+                'message': 'Vote must be "keep" or "remove"'
+            }), 400
         
         conn = get_db()
         if not conn:
@@ -422,8 +466,8 @@ def delete_report(report_id):
         
         cursor = conn.cursor()
         
-        # Check if report exists and belongs to user
-        cursor.execute('SELECT user_id FROM reports WHERE id = %s', (report_id,))
+        # Check if report exists and is active
+        cursor.execute('SELECT id, expires_at FROM reports WHERE id = %s AND status = %s', (report_id, 'ACTIVE'))
         report = cursor.fetchone()
         
         if not report:
@@ -431,30 +475,93 @@ def delete_report(report_id):
             conn.close()
             return jsonify({
                 'success': False,
-                'message': 'Report not found'
+                'message': 'Report not found or already expired'
             }), 404
         
-        if report['user_id'] != user_id:
-            cursor.close()
-            conn.close()
-            return jsonify({
-                'success': False,
-                'message': 'You can only delete your own reports'
-            }), 403
+        # Check if user already voted on this report
+        cursor.execute('SELECT id, vote_type FROM report_votes WHERE report_id = %s AND user_id = %s', (report_id, user_id))
+        existing_vote = cursor.fetchone()
         
-        # Delete the report
-        cursor.execute('DELETE FROM reports WHERE id = %s', (report_id,))
+        if existing_vote:
+            if existing_vote['vote_type'] == vote_type:
+                # Same vote - get current counts and return
+                cursor.execute('''
+                    SELECT vote_type, COUNT(*) as count 
+                    FROM report_votes 
+                    WHERE report_id = %s 
+                    GROUP BY vote_type
+                ''', (report_id,))
+                vote_counts = {row['vote_type']: row['count'] for row in cursor.fetchall()}
+                cursor.close()
+                conn.close()
+                return jsonify({
+                    'success': True,
+                    'message': 'You already voted this way',
+                    'already_voted': True,
+                    'keep_votes': vote_counts.get('keep', 0),
+                    'remove_votes': vote_counts.get('remove', 0),
+                    'votes_threshold': VOTES_THRESHOLD
+                })
+            else:
+                # Change vote
+                cursor.execute('UPDATE report_votes SET vote_type = %s WHERE id = %s', (vote_type, existing_vote['id']))
+        else:
+            # New vote
+            cursor.execute(
+                'INSERT INTO report_votes (report_id, user_id, vote_type) VALUES (%s, %s, %s)',
+                (report_id, user_id, vote_type)
+            )
+        
         conn.commit()
+        
+        # Count votes
+        cursor.execute('''
+            SELECT vote_type, COUNT(*) as count 
+            FROM report_votes 
+            WHERE report_id = %s 
+            GROUP BY vote_type
+        ''', (report_id,))
+        vote_counts = {row['vote_type']: row['count'] for row in cursor.fetchall()}
+        
+        keep_votes = vote_counts.get('keep', 0)
+        remove_votes = vote_counts.get('remove', 0)
+        
+        result = {
+            'success': True,
+            'keep_votes': keep_votes,
+            'remove_votes': remove_votes,
+            'votes_threshold': VOTES_THRESHOLD,
+            'action_taken': None
+        }
+        
+        # Check if threshold reached
+        if remove_votes >= VOTES_THRESHOLD:
+            # Delete the report
+            cursor.execute('DELETE FROM reports WHERE id = %s', (report_id,))
+            conn.commit()
+            result['action_taken'] = 'removed'
+            result['message'] = 'Report removed! (3 votes reached)'
+        elif keep_votes >= VOTES_THRESHOLD:
+            # Extend TTL and reset votes
+            new_expires_at = datetime.utcnow() + timedelta(seconds=REPORT_TTL_SECONDS)
+            cursor.execute('UPDATE reports SET expires_at = %s WHERE id = %s', (new_expires_at, report_id))
+            cursor.execute('DELETE FROM report_votes WHERE report_id = %s', (report_id,))
+            conn.commit()
+            result['action_taken'] = 'extended'
+            result['message'] = 'Report confirmed! TTL extended and votes reset.'
+            result['keep_votes'] = 0
+            result['remove_votes'] = 0
+            result['expires_at'] = new_expires_at.isoformat()
+        else:
+            result['message'] = f'Vote recorded! ({keep_votes}/3 keep, {remove_votes}/3 remove)'
+        
         cursor.close()
         conn.close()
         
-        return jsonify({
-            'success': True,
-            'message': 'Report deleted successfully'
-        })
+        return jsonify(result)
         
     except Exception as e:
-        print(f"Delete report error: {e}")
+        print(f"Vote on report error: {e}")
         return jsonify({
             'success': False,
             'message': 'Internal server error'
