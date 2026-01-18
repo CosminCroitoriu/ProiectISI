@@ -113,5 +113,5 @@ TODO:
 - statistici, grafice (e.g. nr de accidente pe o anumita zona, strada, etc) - done
 
 
-- DOCUMENTATIE INITIALA VS FINALA - ce n-a mers?
-- ppt - todo
+- DOCUMENTATIE INITIALA VS FINALA - ce n-a mers? - added on pptx
+- pptx - done
