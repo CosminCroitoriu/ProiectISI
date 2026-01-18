@@ -110,8 +110,8 @@ Open Source - Educational Project
 TODO:
 - ttl pe report-uri - done
 - sistem de votare pe report-uri, la 3 voturi sa se stearga report-ul - done
-- statistici, grafice (e.g. nr de accidente pe o anumita zona, strada, etc) - todo
+- statistici, grafice (e.g. nr de accidente pe o anumita zona, strada, etc) - done
 
 
 - DOCUMENTATIE INITIALA VS FINALA - ce n-a mers?
-- ppt
+- ppt - todo
