@@ -12,6 +12,11 @@ document.getElementById('backToMapBtn').addEventListener('click', () => {
     window.location.href = 'map.html';
 });
 
+// Statistics page navigation
+document.getElementById('statsBtn').addEventListener('click', () => {
+    window.location.href = 'statistics.html';
+});
+
 // Logout functionality
 document.getElementById('logoutBtn').addEventListener('click', () => {
     localStorage.removeItem('token');

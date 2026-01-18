@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RoadAlert - Statistics</title>
+    <link rel="stylesheet" href="statistics.css?v=3">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="nav-brand">
+            <span class="brand-text">RoadAlert</span>
+        </div>
+        <div class="nav-links">
+            <a href="map.html" class="nav-link">Map</a>
+            <a href="profile.html" class="nav-link">Profile</a>
+            <a href="statistics.html" class="nav-link active">Statistics</a>
+            <button id="logoutBtn" class="nav-btn">Logout</button>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <div class="page-header">
+            <h1>Traffic Statistics</h1>
+            <p>Real-time insights from our community</p>
+        </div>
+
+        <!-- Summary Cards -->
+        <div class="summary-cards">
+            <div class="summary-card">
+                <div class="card-icon-text">REP</div>
+                <div class="card-content">
+                    <span class="card-value" id="totalReports">-</span>
+                    <span class="card-label">Total Reports</span>
+                </div>
+            </div>
+            <div class="summary-card">
+                <div class="card-icon-text">ACT</div>
+                <div class="card-content">
+                    <span class="card-value" id="activeReports">-</span>
+                    <span class="card-label">Active Reports</span>
+                </div>
+            </div>
+            <div class="summary-card">
+                <div class="card-icon-text">USR</div>
+                <div class="card-content">
+                    <span class="card-value" id="totalUsers">-</span>
+                    <span class="card-label">Community Members</span>
+                </div>
+            </div>
+            <div class="summary-card">
+                <div class="card-icon-text">VOT</div>
+                <div class="card-content">
+                    <span class="card-value" id="totalVotes">-</span>
+                    <span class="card-label">Total Votes</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Charts Grid -->
+        <div class="charts-grid">
+            <!-- Reports by Type -->
+            <div class="chart-card">
+                <h3>Reports by Type</h3>
+                <div class="chart-container">
+                    <canvas id="reportsByTypeChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Reports Over Time -->
+            <div class="chart-card">
+                <h3>Reports Per Day (Last 30 Days)</h3>
+                <div class="chart-container">
+                    <canvas id="reportsPerDayChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Reports by Type Daily -->
+            <div class="chart-card wide">
+                <h3>Reports by Type (Last 7 Days)</h3>
+                <div class="chart-container">
+                    <canvas id="reportsByTypeDailyChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Reports by Hour -->
+            <div class="chart-card">
+                <h3>Reports by Hour of Day</h3>
+                <div class="chart-container">
+                    <canvas id="reportsByHourChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Monthly Trend -->
+            <div class="chart-card">
+                <h3>Monthly Trend (Last 12 Months)</h3>
+                <div class="chart-container">
+                    <canvas id="reportsPerMonthChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Top Reporters -->
+        <div class="leaderboard-section">
+            <h2>Top Contributors</h2>
+            <div class="leaderboard" id="leaderboard">
+                <!-- Populated by JS -->
+            </div>
+        </div>
+
+        <!-- Extra Stats -->
+        <div class="extra-stats">
+            <div class="stat-item">
+                <span class="stat-text">Peak reporting hour: <strong id="peakHour">-</strong></span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-text">Avg reports per user: <strong id="avgReports">-</strong></span>
+            </div>
+        </div>
+    </main>
+
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="loading-overlay">
+        <div class="spinner"></div>
+        <p>Loading statistics...</p>
+    </div>
+
+    <script src="statistics.js?v=3"></script>
+</body>
+</html>

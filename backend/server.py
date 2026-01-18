@@ -260,7 +260,7 @@ def verify_token():
 REPORT_TTL_SECONDS = 30
 
 # Number of votes needed to remove or extend a report
-VOTES_THRESHOLD = 3
+VOTES_THRESHOLD = 2
 
 @app.route('/api/reports', methods=['POST'])
 def create_report():
@@ -506,11 +506,13 @@ def vote_on_report(report_id):
                 # Change vote
                 cursor.execute('UPDATE report_votes SET vote_type = %s WHERE id = %s', (vote_type, existing_vote['id']))
         else:
-            # New vote
+            # New vote - insert and increase reputation
             cursor.execute(
                 'INSERT INTO report_votes (report_id, user_id, vote_type) VALUES (%s, %s, %s)',
                 (report_id, user_id, vote_type)
             )
+            # Increase reputation score by 1 for participating in voting
+            cursor.execute('UPDATE users SET reputation_score = reputation_score + 1 WHERE id = %s', (user_id,))
         
         conn.commit()
         
@@ -625,6 +627,145 @@ def get_profile():
         
     except Exception as e:
         print(f"Profile error: {e}")
+        return jsonify({
+            'success': False,
+            'message': 'Internal server error'
+        }), 500
+
+# ==================== STATISTICS ====================
+
+@app.route('/api/statistics', methods=['GET'])
+def get_statistics():
+    """Get statistics about reports and users"""
+    try:
+        conn = get_db()
+        if not conn:
+            return jsonify({
+                'success': False,
+                'message': 'Database connection failed'
+            }), 500
+        
+        cursor = conn.cursor()
+        
+        # 1. Reports by type (all time)
+        cursor.execute('''
+            SELECT it.type_name, COUNT(r.id) as count
+            FROM incident_types it
+            LEFT JOIN reports r ON r.type_id = it.id
+            GROUP BY it.id, it.type_name
+            ORDER BY count DESC
+        ''')
+        reports_by_type = [{'type': row['type_name'], 'count': row['count']} for row in cursor.fetchall()]
+        
+        # 2. Reports per day (last 30 days)
+        cursor.execute('''
+            SELECT DATE(created_at) as date, COUNT(*) as count
+            FROM reports
+            WHERE created_at >= CURRENT_DATE - INTERVAL '30 days'
+            GROUP BY DATE(created_at)
+            ORDER BY date ASC
+        ''')
+        reports_per_day = [{'date': row['date'].isoformat(), 'count': row['count']} for row in cursor.fetchall()]
+        
+        # 3. Reports per month (last 12 months)
+        cursor.execute('''
+            SELECT TO_CHAR(created_at, 'YYYY-MM') as month, COUNT(*) as count
+            FROM reports
+            WHERE created_at >= CURRENT_DATE - INTERVAL '12 months'
+            GROUP BY TO_CHAR(created_at, 'YYYY-MM')
+            ORDER BY month ASC
+        ''')
+        reports_per_month = [{'month': row['month'], 'count': row['count']} for row in cursor.fetchall()]
+        
+        # 4. Reports by type per day (last 7 days) for stacked chart
+        cursor.execute('''
+            SELECT DATE(r.created_at) as date, it.type_name, COUNT(*) as count
+            FROM reports r
+            JOIN incident_types it ON r.type_id = it.id
+            WHERE r.created_at >= CURRENT_DATE - INTERVAL '7 days'
+            GROUP BY DATE(r.created_at), it.type_name
+            ORDER BY date ASC
+        ''')
+        reports_by_type_daily = {}
+        for row in cursor.fetchall():
+            date_str = row['date'].isoformat()
+            if date_str not in reports_by_type_daily:
+                reports_by_type_daily[date_str] = {'date': date_str, 'ACCIDENT': 0, 'POLICE': 0, 'POTHOLE': 0, 'TRAFFIC_JAM': 0}
+            reports_by_type_daily[date_str][row['type_name']] = row['count']
+        reports_by_type_daily_list = list(reports_by_type_daily.values())
+        
+        # 5. Total statistics
+        cursor.execute('SELECT COUNT(*) as total FROM reports')
+        total_reports = cursor.fetchone()['total']
+        
+        cursor.execute('SELECT COUNT(*) as total FROM reports WHERE status = %s', ('ACTIVE',))
+        active_reports = cursor.fetchone()['total']
+        
+        cursor.execute('SELECT COUNT(*) as total FROM users')
+        total_users = cursor.fetchone()['total']
+        
+        cursor.execute('SELECT COUNT(*) as total FROM report_votes')
+        total_votes = cursor.fetchone()['total']
+        
+        # 6. Top reporters (users with most reports)
+        cursor.execute('''
+            SELECT u.username, COUNT(r.id) as report_count, u.reputation_score
+            FROM users u
+            LEFT JOIN reports r ON r.user_id = u.id
+            GROUP BY u.id, u.username, u.reputation_score
+            ORDER BY report_count DESC
+            LIMIT 5
+        ''')
+        top_reporters = [{'username': row['username'], 'reports': row['report_count'], 'reputation': row['reputation_score']} for row in cursor.fetchall()]
+        
+        # 7. Average reports per user
+        avg_reports_per_user = round(total_reports / max(total_users, 1), 2)
+        
+        # 8. Most active hour of the day
+        cursor.execute('''
+            SELECT EXTRACT(HOUR FROM created_at) as hour, COUNT(*) as count
+            FROM reports
+            GROUP BY EXTRACT(HOUR FROM created_at)
+            ORDER BY count DESC
+            LIMIT 1
+        ''')
+        peak_hour_row = cursor.fetchone()
+        peak_hour = int(peak_hour_row['hour']) if peak_hour_row else 0
+        
+        # 9. Reports by hour distribution
+        cursor.execute('''
+            SELECT EXTRACT(HOUR FROM created_at) as hour, COUNT(*) as count
+            FROM reports
+            GROUP BY EXTRACT(HOUR FROM created_at)
+            ORDER BY hour ASC
+        ''')
+        reports_by_hour = [{'hour': int(row['hour']), 'count': row['count']} for row in cursor.fetchall()]
+        
+        cursor.close()
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'statistics': {
+                'summary': {
+                    'total_reports': total_reports,
+                    'active_reports': active_reports,
+                    'total_users': total_users,
+                    'total_votes': total_votes,
+                    'avg_reports_per_user': avg_reports_per_user,
+                    'peak_hour': peak_hour
+                },
+                'reports_by_type': reports_by_type,
+                'reports_per_day': reports_per_day,
+                'reports_per_month': reports_per_month,
+                'reports_by_type_daily': reports_by_type_daily_list,
+                'reports_by_hour': reports_by_hour,
+                'top_reporters': top_reporters
+            }
+        })
+        
+    except Exception as e:
+        print(f"Statistics error: {e}")
         return jsonify({
             'success': False,
             'message': 'Internal server error'

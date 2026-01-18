@@ -15,6 +15,11 @@ document.getElementById('profileBtn').addEventListener('click', () => {
     window.location.href = 'profile.html';
 });
 
+// Statistics page navigation
+document.getElementById('statsBtn').addEventListener('click', () => {
+    window.location.href = 'statistics.html';
+});
+
 // Logout functionality
 document.getElementById('logoutBtn').addEventListener('click', () => {
     localStorage.removeItem('token');
@@ -232,6 +237,118 @@ require([
             }
         }
     });
+    
+    // ==========================================
+    // PICK DESTINATION FROM MAP
+    // ==========================================
+    const pickDestinationBtn = document.getElementById('pickDestination');
+    let isPickingDestination = false;
+    let destinationMarker = null;
+    let pickingHint = null;
+    
+    // Create destination marker graphics layer
+    const destinationLayer = new GraphicsLayer({
+        title: "Destination"
+    });
+    map.add(destinationLayer);
+    
+    // Toggle picking mode
+    pickDestinationBtn.addEventListener('click', () => {
+        togglePickingMode();
+    });
+    
+    function togglePickingMode(forceOff = false) {
+        isPickingDestination = forceOff ? false : !isPickingDestination;
+        
+        if (isPickingDestination) {
+            // Enable picking mode
+            pickDestinationBtn.classList.add('active');
+            document.body.classList.add('picking-destination');
+            
+            // Show hint banner
+            if (!pickingHint) {
+                pickingHint = document.createElement('div');
+                pickingHint.className = 'picking-mode-hint';
+                pickingHint.innerHTML = `
+                    🎯 Click on the map to set destination
+                    <button class="cancel-pick">Cancel</button>
+                `;
+                document.body.appendChild(pickingHint);
+                
+                pickingHint.querySelector('.cancel-pick').addEventListener('click', () => {
+                    togglePickingMode(true);
+                });
+            }
+        } else {
+            // Disable picking mode
+            pickDestinationBtn.classList.remove('active');
+            document.body.classList.remove('picking-destination');
+            
+            if (pickingHint) {
+                pickingHint.remove();
+                pickingHint = null;
+            }
+        }
+    }
+    
+    // Reverse geocode to get address from coordinates
+    async function reverseGeocode(longitude, latitude) {
+        try {
+            const response = await locator.locationToAddress(geocodeUrl, {
+                location: { longitude, latitude }
+            });
+            return response.address || `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
+        } catch (error) {
+            console.error("Reverse geocode error:", error);
+            return `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
+        }
+    }
+    
+    // Set destination from map click
+    async function setDestinationFromMap(mapPoint) {
+        const coords = {
+            longitude: mapPoint.longitude,
+            latitude: mapPoint.latitude
+        };
+        
+        // Store coordinates
+        endInput.dataset.coords = JSON.stringify(coords);
+        
+        // Show loading state
+        endInput.value = "Getting address...";
+        
+        // Get address via reverse geocoding
+        const address = await reverseGeocode(coords.longitude, coords.latitude);
+        endInput.value = address;
+        
+        // Add/update destination marker
+        destinationLayer.removeAll();
+        
+        const destinationGraphic = new Graphic({
+            geometry: {
+                type: "point",
+                longitude: coords.longitude,
+                latitude: coords.latitude
+            },
+            symbol: {
+                type: "simple-marker",
+                style: "diamond",
+                color: [30, 136, 229],  // Blue (#1e88e5)
+                size: "18px",
+                outline: {
+                    color: [255, 255, 255],
+                    width: 2
+                }
+            }
+        });
+        destinationLayer.add(destinationGraphic);
+        
+        // Exit picking mode
+        togglePickingMode(true);
+        
+        // Show toast
+        showToast('📍 Destination set!', 'success');
+    }
     
     // ==========================================
     // AUTOCOMPLETE SUGGESTIONS
@@ -690,11 +807,14 @@ require([
     clearRouteBtn.addEventListener('click', () => {
         routeLayer.removeAll();
         stopsLayer.removeAll();
+        destinationLayer.removeAll();
         directionsResults.innerHTML = '';
         startInput.value = '';
         endInput.value = '';
         delete startInput.dataset.coords;
         delete endInput.dataset.coords;
+        // Cancel picking mode if active
+        togglePickingMode(true);
     });
     
     // ==========================================
@@ -816,8 +936,8 @@ require([
                         <hr style="margin: 12px 0; border: none; border-top: 1px solid #e0e0e0;">
                         <p style="font-weight: 600; color: #333;">Is this still here?</p>
                         <div style="display: flex; gap: 16px; margin-top: 8px;">
-                            <span style="color: #4caf50;">✅ ${keepVotes}/3</span>
-                            <span style="color: #f44336;">❌ ${removeVotes}/3</span>
+                            <span style="color: #4caf50;">✅ ${keepVotes}/2</span>
+                            <span style="color: #f44336;">❌ ${removeVotes}/2</span>
                         </div>
                         ${voteStatusHtml}
                     </div>
@@ -825,12 +945,12 @@ require([
                 actions: [
                     {
                         id: "remove-report",
-                        title: `No, remove (${removeVotes}/3)`,
+                        title: `No, remove (${removeVotes}/2)`,
                         className: "esri-icon-trash"
                     },
                     {
                         id: "keep-report", 
-                        title: `Yes, still here (${keepVotes}/3)`,
+                        title: `Yes, still here (${keepVotes}/2)`,
                         className: "esri-icon-check-mark"
                     }
                 ]
@@ -1030,7 +1150,7 @@ require([
                             // Vote recorded but threshold not reached
                             view.closePopup();
                             const voteEmoji = voteType === 'keep' ? '✅' : '❌';
-                            showToast(`${voteEmoji} Vote recorded! (${keepVotes}/3 keep, ${removeVotes}/3 remove)`, 'success');
+                            showToast(`${voteEmoji} Vote recorded! (${keepVotes}/2 keep, ${removeVotes}/2 remove)`, 'success');
                             // Refresh to update the graphic with new vote counts
                             refreshReports();
                         }
@@ -1039,7 +1159,7 @@ require([
                         const removeVotes = data.remove_votes ?? 0;
                         
                         if (data.already_voted) {
-                            showToast(`You already voted this way (${keepVotes}/3 keep, ${removeVotes}/3 remove)`, 'error');
+                            showToast(`You already voted this way (${keepVotes}/2 keep, ${removeVotes}/2 remove)`, 'error');
                         } else {
                             showToast(data.message || 'Failed to vote', 'error');
                         }
@@ -1198,8 +1318,14 @@ require([
         });
     });
     
-    // Click on map to show report dropdown
+    // Click on map to show report dropdown or set destination
     view.on("click", function(event) {
+        // Check if we're in destination picking mode
+        if (isPickingDestination) {
+            setDestinationFromMap(event.mapPoint);
+            return;
+        }
+        
         // Don't show dropdown if clicking on an existing graphic
         view.hitTest(event).then(function(response) {
             const graphic = response.results.find(result => 

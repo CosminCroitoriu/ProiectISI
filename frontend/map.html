@@ -9,7 +9,7 @@
     <link rel="stylesheet" href="https://js.arcgis.com/4.28/esri/themes/light/main.css">
     
     <!-- Custom CSS -->
-    <link rel="stylesheet" href="map.css?v=2">
+    <link rel="stylesheet" href="map.css?v=5">
 </head>
 <body>
     <!-- Header -->
@@ -19,6 +19,7 @@
         </div>
         <div class="header-right">
             <span id="username"></span>
+            <button id="statsBtn" class="btn-stats">Stats</button>
             <button id="profileBtn" class="btn-profile">Profile</button>
             <button id="logoutBtn">Logout</button>
         </div>
@@ -52,7 +53,8 @@
             </div>
             <div class="input-group">
                 <label>To:</label>
-                <input type="text" id="endInput" placeholder="Enter destination">
+                <input type="text" id="endInput" placeholder="Enter destination or pick from map">
+                <button id="pickDestination" class="pick-map-btn" title="Pick destination from map">🎯</button>
             </div>
             <button id="getDirectionsBtn" class="directions-btn">Get Route</button>
             <button id="clearRouteBtn" class="clear-btn">Clear Route</button>
@@ -96,7 +98,7 @@
     <script src="https://js.arcgis.com/4.28/"></script>
     
     <!-- Map JavaScript -->
-    <script src="map.js?v=13"></script>
+    <script src="map.js?v=17"></script>
 </body>
 </html>
 
